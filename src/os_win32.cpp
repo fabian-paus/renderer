@@ -1,65 +1,11 @@
 // renderer-app.cpp : Defines the entry point for the application.
 //
 
+#include "fp_core.h"
+#include "fp_allocator.h"
+
 //#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-
-using i64 = INT64;
-using i32 = INT32;
-using i16 = INT16;
-using i8 = INT8;
-
-using u64 = UINT64;
-using u32 = UINT32;
-using u16 = UINT16;
-using u8 = UINT8;
-
-template <typename FunctionT>
-struct DeferHelper
-{
-    FunctionT function;
-
-    DeferHelper(FunctionT function)
-        : function(function)
-    { }
-
-    ~DeferHelper()
-    {
-        function();
-    }
-};
-
-#define CONCAT_1(x, y) x##y
-#define CONCAT_2(x, y) CONCAT_1(x, y)
-#define CONCAT_COUNTER(x) CONCAT_2(x, __COUNTER__)
-#define defer DeferHelper CONCAT_COUNTER(defer) = [&]()
-
-struct Allocator;
-
-typedef void* AllocateFunction(Allocator* context, u64 size);
-typedef void FreeFunction(Allocator* context, void* data, u64 size);
-
-struct Allocator
-{
-    AllocateFunction* allocateFunction = nullptr;
-    FreeFunction* freeFunction = nullptr;
-
-    void* allocate(u64 size)
-    {
-        return allocateFunction(this, size);
-    }
-
-    void free(void* allocatedData, u64 size)
-    {
-        freeFunction(this, allocatedData, size);
-    }
-
-    template <typename T>
-    T* allocateArray(u64 count)
-    {
-        return (T*)allocate(count * sizeof(T));
-    }
-};
 
 Allocator createPageAllocator()
 {
@@ -74,46 +20,6 @@ Allocator createPageAllocator()
     };
     return allocator;
 }
-
-struct ArenaAllocator : Allocator
-{
-    u8* data = nullptr;
-    u64 size = 0;
-    u64 used = 0;
-};
-
-ArenaAllocator createArenaAllocator(void* data, u64 size)
-{
-    ArenaAllocator allocator = {};
-    allocator.data = (u8*)data;
-    allocator.size = size;
-    allocator.used = 0;
-
-    allocator.allocateFunction = +[](Allocator* context, u64 size) -> void*
-    {
-        ArenaAllocator* allocator = (ArenaAllocator*)context;
-
-        u64 used = allocator->used;
-        if (used + size > allocator->size)
-        {
-            return nullptr;
-        }
-
-        u8* current = allocator->data + used;
-        allocator->used += size;
-
-        return current;
-    };
-    allocator.freeFunction = +[](Allocator* context, void* data, u64 size)
-    {
-        ArenaAllocator* allocator = (ArenaAllocator*)context;
-        // Do not do anything! The arena can be freed in bulk
-    };
-    return allocator;
-}
-
-
-
 
 struct ReadFileResult
 {
@@ -210,6 +116,14 @@ struct ObjModel
     Vertex3* textureCoords;
     i64 facesCount;
     Face* faces;
+
+    void free(Allocator* allocator)
+    {
+        allocator->freeArray(vertices, verticesCount);
+        allocator->freeArray(normals, normalsCount);
+        allocator->freeArray(textureCoords, textureCoordsCount);
+        allocator->freeArray(faces, facesCount);
+    }
 };
 
 u8* parseFloat(u8* cursor, float* out)
@@ -602,9 +516,7 @@ ObjModel parseObjModel(u8* data, i64 size, Allocator* allocator)
     return result;
 }
 
-constexpr const u64 KB = 1024;
-constexpr const u64 MB = 1024 * KB;
-constexpr const u64 GB = 1024 * MB;
+
 
 // This variable is expected by the compiler/linker if floats/doubles are used
 extern "C" int _fltused = 0;
@@ -612,11 +524,10 @@ extern "C" int _fltused = 0;
 extern "C" int WINAPI WinMainCRTStartup(void)
 {
     Allocator pageAllocator = createPageAllocator();
-    u64 arenaSize = 4 * MB;
-    void* arenaData = pageAllocator.allocate(arenaSize);
-    ArenaAllocator arenaAllocator = createArenaAllocator(arenaData, arenaSize);
-
-    // TODO: Create a arena allocator with fallback to the page allocator if size is too big
+    u64 arenaSize = 16 * KB;
+    // This allocator fails for sizes > arenaSize, so create a fallback allocator
+    // That uses the base if this happens!
+    ArenaWithFallbackAllocator arenaAllocator = createArenaWithFallbackAllocator(&pageAllocator, arenaSize);
 
     wchar_t const* filename = L"data/Deer.obj";
 
@@ -635,7 +546,7 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     OutputDebugStringW(L"Read file content successfully!\n");
 
     ObjModel model = parseObjModel(fileResult.data, fileResult.size, &arenaAllocator);
-
+    model.free(&arenaAllocator);
 
     return 0;
 }

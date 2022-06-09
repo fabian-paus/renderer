@@ -3,4 +3,8 @@
   <ItemGroup>
     <ClCompile Include="src\os_win32.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\fp_core.h" />
+    <ClInclude Include="src\fp_allocator.h" />
+  </ItemGroup>
 </Project>
