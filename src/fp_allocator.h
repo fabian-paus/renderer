@@ -9,6 +9,8 @@
 * 
 ******************************************************************************/
 
+#pragma once
+
 #include "fp_core.h"
 
 /**
@@ -182,7 +184,10 @@ struct DynamicArenaAllocator : OwningAllocator
         }
 
         // Now, only the a single arena is still allocated.
-        current->used = sizeof(LinkedArenaAllocator);
+        if (current)
+        {
+            current->used = sizeof(LinkedArenaAllocator);
+        }
     }
 };
 

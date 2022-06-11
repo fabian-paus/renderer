@@ -24,6 +24,7 @@
   <ItemGroup>
     <ClInclude Include="src\fp_allocator.h" />
     <ClInclude Include="src\fp_core.h" />
+    <ClInclude Include="src\fp_obj.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

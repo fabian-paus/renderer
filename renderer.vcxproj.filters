@@ -6,5 +6,6 @@
   <ItemGroup>
     <ClInclude Include="src\fp_core.h" />
     <ClInclude Include="src\fp_allocator.h" />
+    <ClInclude Include="src\fp_obj.h" />
   </ItemGroup>
 </Project>
