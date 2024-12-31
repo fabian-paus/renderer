@@ -8,6 +8,7 @@
 //#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <windowsx.h>
+#include <gl/GL.h>
 
 Allocator createPageAllocator()
 {
@@ -218,12 +219,40 @@ LRESULT CALLBACK MainWndProc(
     return 0;
 }
 
+// OpenGL on Windows (WGL)
+
+typedef HGLRC WINAPI wglCreateContextAttribsArbF(HDC hDC, HGLRC hShareContext, const int* attribList);
+static wglCreateContextAttribsArbF* wglCreateContextAttribsARB;
+
+typedef BOOL WINAPI wglGetPixelFormatAttribIvArbF(HDC hdc,
+    int iPixelFormat,
+    int iLayerPlane,
+    UINT nAttributes,
+    const int* piAttributes,
+    int* piValues);
+static wglGetPixelFormatAttribIvArbF* wglGetPixelFormatAttribIvARB;
+
+typedef BOOL WINAPI wglGetPixelFormatAttribFvArbF(HDC hdc,
+    int iPixelFormat,
+    int iLayerPlane,
+    UINT nAttributes,
+    const int* piAttributes,
+    FLOAT* pfValues);
+static wglGetPixelFormatAttribFvArbF* wglGetPixelFormatAttribFvARB;
+
+typedef BOOL WINAPI wglChoosePixelFormatArbF(HDC hdc,
+    const int* piAttribIList,
+    const FLOAT* pfAttribFList,
+    UINT nMaxFormats,
+    int* piFormats,
+    UINT* nNumFormats);
+static wglChoosePixelFormatArbF* wglChoosePixelFormatARB;
+
+
 extern "C" int WINAPI WinMainCRTStartup(void)
 {
     Allocator pageAllocator = createPageAllocator();
     u64 arenaSize = 16 * KB;
-    // This allocator fails for sizes > arenaSize, so create a fallback allocator
-    // That uses the base if this happens!
     ArenaWithFallbackAllocator arenaAllocator = createArenaWithFallbackAllocator(&pageAllocator, arenaSize);
 
     wchar_t const* filename = L"data/Deer.obj";
@@ -251,7 +280,6 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     windowClass.cbSize = sizeof(windowClass);
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = windowClassName;
-    // TODO: Define own window procedure
     windowClass.lpfnWndProc = &MainWndProc;
     RegisterClassExW(&windowClass);
 
@@ -272,8 +300,11 @@ extern "C" int WINAPI WinMainCRTStartup(void)
 
     if (window == nullptr)
     {
+        // TODO: Add error message if window cannot be created
         return 1;
     }
+
+    HDC windowDC = GetDC(window);
 
     ShowWindow(window, SW_SHOW);
 
