@@ -250,6 +250,18 @@ static wglChoosePixelFormatArbF* wglChoosePixelFormatARB;
 typedef const GLubyte* glGetStringiF(GLenum name, GLuint index);
 static glGetStringiF* glGetStringi;
 
+typedef void DEBUGPROCF(GLenum source,
+    GLenum type,
+    GLuint id,
+    GLenum severity,
+    GLsizei length,
+    const char* message,
+    const void* userParam);
+typedef DEBUGPROCF* DEBUGPROC;
+
+typedef void glDebugMessageCallbackF(DEBUGPROC callback, const void* userParam);
+static glDebugMessageCallbackF* glDebugMessageCallback;
+
 #define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
 #define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
 #define WGL_CONTEXT_FLAGS_ARB             0x2094
@@ -261,7 +273,22 @@ static glGetStringiF* glGetStringi;
 #define GL_MAJOR_VERSION 0x821B
 #define GL_MINOR_VERSION 0x821C
 
-static void setupOpenGL(HDC hdc) {
+#define GL_DEBUG_OUTPUT 0x92E0
+
+void glMsgCallback(GLenum source,
+    GLenum type,
+    GLuint id,
+    GLenum severity,
+    GLsizei length,
+    const char* message,
+    const void* userParam)
+{
+    OutputDebugStringW(L"GL DEBUG: ");
+    OutputDebugStringA(message);
+    OutputDebugStringW(L"\n");
+}
+
+static HGLRC setupOpenGL(HDC hdc) {
     PIXELFORMATDESCRIPTOR format = {};
     format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
     format.iPixelType = PFD_TYPE_RGBA;
@@ -275,6 +302,8 @@ static void setupOpenGL(HDC hdc) {
         OutputDebugStringW(L"Could not choose a fitting pixel format\n");
         ExitProcess(-1);
     }
+
+    //DescribePixelFormat(hdc, formatIndex, sizeof(format), &format);
 
     BOOL setResult = SetPixelFormat(hdc, formatIndex, &format);
     if (!setResult) {
@@ -292,6 +321,7 @@ static void setupOpenGL(HDC hdc) {
 
     glGetStringi = (glGetStringiF*)wglGetProcAddress("glGetStringi");
     wglCreateContextAttribsARB = (wglCreateContextAttribsARBF*)wglGetProcAddress("wglCreateContextAttribsARB");
+    glDebugMessageCallback = (glDebugMessageCallbackF*)wglGetProcAddress("glDebugMessageCallback");
 
     // Lookup extensions
     GLint numExtensions = 0;
@@ -321,6 +351,9 @@ static void setupOpenGL(HDC hdc) {
     wglMakeCurrent(hdc, glContext);
     wglDeleteContext(tempContext);
 
+    glDebugMessageCallback(glMsgCallback, nullptr);
+    glEnable(GL_DEBUG_OUTPUT);
+
     int versionMajor = 0; 
     int versionMinor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &versionMajor);
@@ -330,7 +363,8 @@ static void setupOpenGL(HDC hdc) {
     OutputDebugStringW(L"OpenGL version: ");
     const char version[] = { '0' + versionMajor, '.', '0' + versionMinor, '\n', '\0'};
     OutputDebugStringA(version);
-    //wglGetProcAddress()
+
+    return glContext;
 }
 
 
@@ -369,6 +403,8 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     windowClass.lpfnWndProc = &MainWndProc;
     RegisterClassExW(&windowClass);
 
+    int windowWidth = 1024;
+    int windowHeight = 768;
     HWND window = CreateWindowExW(
         0,                              // Optional window styles.
         windowClassName,                     // Window class
@@ -376,7 +412,7 @@ extern "C" int WINAPI WinMainCRTStartup(void)
         WS_OVERLAPPEDWINDOW,            // Window style
 
         // Size and position
-        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        CW_USEDEFAULT, CW_USEDEFAULT, windowWidth, windowHeight,
 
         NULL,       // Parent window    
         NULL,       // Menu
@@ -391,7 +427,7 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     }
 
     HDC windowDC = GetDC(window);
-    setupOpenGL(windowDC);
+    HGLRC glContext = setupOpenGL(windowDC);
 
     ShowWindow(window, SW_SHOW);
 
@@ -410,6 +446,16 @@ extern "C" int WINAPI WinMainCRTStartup(void)
         if (g_userInput.isDown(MouseButton::Left))
         {
             OutputDebugStringW(L"Left button clicked\n");
+        }
+
+        glViewport(0, 0, windowWidth, windowHeight);
+        glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        BOOL swapResult = SwapBuffers(windowDC);
+        if (!swapResult) {
+            OutputDebugStringW(L"Failed to swap buffers\n");
+            DWORD error = GetLastError();
         }
     }
 
