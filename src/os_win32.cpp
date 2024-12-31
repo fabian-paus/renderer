@@ -5,7 +5,6 @@
 #include "fp_allocator.h"
 #include "fp_obj.h"
 
-//#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <windowsx.h>
 #include <gl/GL.h>
@@ -221,8 +220,8 @@ LRESULT CALLBACK MainWndProc(
 
 // OpenGL on Windows (WGL)
 
-typedef HGLRC WINAPI wglCreateContextAttribsArbF(HDC hDC, HGLRC hShareContext, const int* attribList);
-static wglCreateContextAttribsArbF* wglCreateContextAttribsARB;
+typedef HGLRC WINAPI wglCreateContextAttribsARBF(HDC hDC, HGLRC hShareContext, const int* attribList);
+static wglCreateContextAttribsARBF* wglCreateContextAttribsARB;
 
 typedef BOOL WINAPI wglGetPixelFormatAttribIvArbF(HDC hdc,
     int iPixelFormat,
@@ -247,6 +246,92 @@ typedef BOOL WINAPI wglChoosePixelFormatArbF(HDC hdc,
     int* piFormats,
     UINT* nNumFormats);
 static wglChoosePixelFormatArbF* wglChoosePixelFormatARB;
+
+typedef const GLubyte* glGetStringiF(GLenum name, GLuint index);
+static glGetStringiF* glGetStringi;
+
+#define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
+#define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
+#define WGL_CONTEXT_FLAGS_ARB             0x2094
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
+#define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
+
+#define GL_NUM_EXTENSIONS 33309
+
+#define GL_MAJOR_VERSION 0x821B
+#define GL_MINOR_VERSION 0x821C
+
+static void setupOpenGL(HDC hdc) {
+    PIXELFORMATDESCRIPTOR format = {};
+    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    format.iPixelType = PFD_TYPE_RGBA;
+    format.cColorBits = 32;
+    format.cDepthBits = 24;
+    format.cStencilBits = 8;
+    format.iLayerType = PFD_MAIN_PLANE;
+
+    int formatIndex = ChoosePixelFormat(hdc, &format);
+    if (formatIndex == 0) {
+        OutputDebugStringW(L"Could not choose a fitting pixel format\n");
+        ExitProcess(-1);
+    }
+
+    BOOL setResult = SetPixelFormat(hdc, formatIndex, &format);
+    if (!setResult) {
+        OutputDebugStringW(L"Could not set pixel format\n");
+        ExitProcess(-1);
+    }
+
+    HGLRC tempContext = wglCreateContext(hdc);
+    if (!tempContext) {
+        OutputDebugStringW(L"Could not create OpenGL context\n");
+        ExitProcess(-1);
+    }
+
+    wglMakeCurrent(hdc, tempContext);
+
+    glGetStringi = (glGetStringiF*)wglGetProcAddress("glGetStringi");
+    wglCreateContextAttribsARB = (wglCreateContextAttribsARBF*)wglGetProcAddress("wglCreateContextAttribsARB");
+
+    // Lookup extensions
+    GLint numExtensions = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+    OutputDebugStringW(L"OpenGL extensions:\n");
+    for (int i = 0; i < numExtensions; ++i) {
+        const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
+        OutputDebugStringW(L" - ");
+        OutputDebugStringA(extension);
+        OutputDebugStringW(L"\n");
+    }
+
+    int attribs[] =
+    {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 6,
+        WGL_CONTEXT_FLAGS_ARB, 0,
+        0
+    };
+
+    HGLRC glContext = wglCreateContextAttribsARB(hdc, 0, attribs);
+    if (!glContext) {
+        OutputDebugStringW(L"Could not create real OpenGL context\n");
+        ExitProcess(-1);
+    }
+
+    wglMakeCurrent(hdc, glContext);
+    wglDeleteContext(tempContext);
+
+    int versionMajor = 0; 
+    int versionMinor = 0;
+    glGetIntegerv(GL_MAJOR_VERSION, &versionMajor);
+    glGetIntegerv(GL_MINOR_VERSION, &versionMinor);
+
+
+    OutputDebugStringW(L"OpenGL version: ");
+    const char version[] = { '0' + versionMajor, '.', '0' + versionMinor, '\n', '\0'};
+    OutputDebugStringA(version);
+    //wglGetProcAddress()
+}
 
 
 extern "C" int WINAPI WinMainCRTStartup(void)
@@ -278,6 +363,7 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     wchar_t const* windowClassName = L"FP_WindowClass";
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(windowClass);
+    windowClass.style = CS_OWNDC;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = windowClassName;
     windowClass.lpfnWndProc = &MainWndProc;
@@ -305,10 +391,9 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     }
 
     HDC windowDC = GetDC(window);
+    setupOpenGL(windowDC);
 
     ShowWindow(window, SW_SHOW);
-
-    // TODO: Replace with PeekMessage!
 
     g_running = true;
     while (g_running)
