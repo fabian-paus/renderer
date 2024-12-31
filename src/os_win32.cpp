@@ -140,7 +140,15 @@ LRESULT CALLBACK MainWndProc(
         return 0;
 
     case WM_PAINT:
+    {
         // Paint the window's client area. 
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(window, &ps);
+
+        // do drawing to 'dc' here -- or don't
+
+        EndPaint(window, &ps);
+    }
         return 0;
 
     case WM_SIZE:
@@ -239,13 +247,16 @@ typedef BOOL WINAPI wglGetPixelFormatAttribFvArbF(HDC hdc,
     FLOAT* pfValues);
 static wglGetPixelFormatAttribFvArbF* wglGetPixelFormatAttribFvARB;
 
-typedef BOOL WINAPI wglChoosePixelFormatArbF(HDC hdc,
+typedef BOOL WINAPI wglChoosePixelFormatARBF(HDC hdc,
     const int* piAttribIList,
     const FLOAT* pfAttribFList,
     UINT nMaxFormats,
     int* piFormats,
     UINT* nNumFormats);
-static wglChoosePixelFormatArbF* wglChoosePixelFormatARB;
+static wglChoosePixelFormatARBF* wglChoosePixelFormatARB;
+
+typedef BOOL WINAPI wglSwapIntervalEXTF(int interval);
+static wglSwapIntervalEXTF* wglSwapIntervalEXT;
 
 typedef const GLubyte* glGetStringiF(GLenum name, GLuint index);
 static glGetStringiF* glGetStringi;
@@ -262,9 +273,36 @@ typedef DEBUGPROCF* DEBUGPROC;
 typedef void glDebugMessageCallbackF(DEBUGPROC callback, const void* userParam);
 static glDebugMessageCallbackF* glDebugMessageCallback;
 
+#define WGL_NUMBER_PIXEL_FORMATS_ARB      0x2000
+#define WGL_DRAW_TO_WINDOW_ARB            0x2001
+#define WGL_DRAW_TO_BITMAP_ARB            0x2002
+#define WGL_ACCELERATION_ARB              0x2003
+#define WGL_NEED_PALETTE_ARB              0x2004
+#define WGL_NEED_SYSTEM_PALETTE_ARB       0x2005
+#define WGL_SWAP_LAYER_BUFFERS_ARB        0x2006
+#define WGL_SWAP_METHOD_ARB               0x2007
+#define WGL_NUMBER_OVERLAYS_ARB           0x2008
+#define WGL_NUMBER_UNDERLAYS_ARB          0x2009
+#define WGL_TRANSPARENT_ARB               0x200A
+#define WGL_TRANSPARENT_RED_VALUE_ARB     0x2037
+#define WGL_TRANSPARENT_GREEN_VALUE_ARB   0x2038
+#define WGL_TRANSPARENT_BLUE_VALUE_ARB    0x2039
+#define WGL_TRANSPARENT_ALPHA_VALUE_ARB   0x203A
+#define WGL_TRANSPARENT_INDEX_VALUE_ARB   0x203B
+#define WGL_SHARE_DEPTH_ARB               0x200C
+#define WGL_SHARE_STENCIL_ARB             0x200D
+#define WGL_SHARE_ACCUM_ARB               0x200E
+#define WGL_SUPPORT_OPENGL_ARB            0x2010
+#define WGL_DOUBLE_BUFFER_ARB             0x2011
+#define WGL_PIXEL_TYPE_ARB                0x2013
+#define WGL_COLOR_BITS_ARB                0x2014
+#define WGL_DEPTH_BITS_ARB                0x2022
+#define WGL_TYPE_RGBA_ARB                 0x202B
+
 #define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
 #define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
 #define WGL_CONTEXT_FLAGS_ARB             0x2094
+#define WGL_CONTEXT_DEBUG_BIT_ARB         0x00000001
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
 #define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
 
@@ -274,6 +312,7 @@ static glDebugMessageCallbackF* glDebugMessageCallback;
 #define GL_MINOR_VERSION 0x821C
 
 #define GL_DEBUG_OUTPUT 0x92E0
+#define GL_DEBUG_OUTPUT_SYNCHRONOUS       0x8242
 
 void glMsgCallback(GLenum source,
     GLenum type,
@@ -288,22 +327,90 @@ void glMsgCallback(GLenum source,
     OutputDebugStringW(L"\n");
 }
 
-static HGLRC setupOpenGL(HDC hdc) {
-    PIXELFORMATDESCRIPTOR format = {};
-    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    format.iPixelType = PFD_TYPE_RGBA;
-    format.cColorBits = 32;
-    format.cDepthBits = 24;
-    format.cStencilBits = 8;
-    format.iLayerType = PFD_MAIN_PLANE;
+#define Assert(condition, message) if (!condition) { OutputDebugStringA(message); OutputDebugStringW(L"\n"); ExitProcess(-1); }
 
-    int formatIndex = ChoosePixelFormat(hdc, &format);
-    if (formatIndex == 0) {
-        OutputDebugStringW(L"Could not choose a fitting pixel format\n");
-        ExitProcess(-1);
+static void initOpenGL() {
+    // to get WGL functions we need valid GL context, so create dummy window for dummy GL context
+    HWND dummy = CreateWindowExW(
+        0, L"STATIC", L"DummyWindow", WS_OVERLAPPED,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        NULL, NULL, NULL, NULL);
+    Assert(dummy, "Failed to create dummy window");
+
+    HDC dc = GetDC(dummy);
+    Assert(dc, "Failed to get device context for dummy window");
+
+    PIXELFORMATDESCRIPTOR desc = {};
+    desc.nSize = sizeof(desc);
+    desc.nVersion = 1;
+    desc.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    desc.iPixelType = PFD_TYPE_RGBA;
+    desc.cColorBits = 24;
+
+
+    int format = ChoosePixelFormat(dc, &desc);
+    if (!format)
+    {
+        Assert(false, "Cannot choose OpenGL pixel format for dummy window!");
     }
 
-    //DescribePixelFormat(hdc, formatIndex, sizeof(format), &format);
+    int ok = DescribePixelFormat(dc, format, sizeof(desc), &desc);
+    Assert(ok, "Failed to describe OpenGL pixel format");
+
+    // reason to create dummy window is that SetPixelFormat can be called only once for the window
+    if (!SetPixelFormat(dc, format, &desc))
+    {
+        Assert(false, "Cannot set OpenGL pixel format for dummy window!");
+    }
+
+    HGLRC rc = wglCreateContext(dc);
+    Assert(rc, "Failed to create OpenGL context for dummy window");
+
+    ok = wglMakeCurrent(dc, rc);
+
+    glGetStringi = (glGetStringiF*)wglGetProcAddress("glGetStringi");
+    wglCreateContextAttribsARB = (wglCreateContextAttribsARBF*)wglGetProcAddress("wglCreateContextAttribsARB");
+    glDebugMessageCallback = (glDebugMessageCallbackF*)wglGetProcAddress("glDebugMessageCallback");
+    wglChoosePixelFormatARB = (wglChoosePixelFormatARBF*)wglGetProcAddress("wglChoosePixelFormatARB");
+    wglSwapIntervalEXT = (wglSwapIntervalEXTF*)wglGetProcAddress("wglSwapIntervalEXT");
+
+    wglMakeCurrent(dc, nullptr);
+    wglDeleteContext(rc);
+    ReleaseDC(dummy, dc);
+    DestroyWindow(dummy);
+}
+
+static HGLRC setupOpenGL(HDC hdc) {
+    int attrib[] =
+    {
+        WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB,  GL_TRUE,
+        WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
+        WGL_COLOR_BITS_ARB,     24,
+        WGL_DEPTH_BITS_ARB,     24,
+
+        // uncomment for sRGB framebuffer, from WGL_ARB_framebuffer_sRGB extension
+        // https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_framebuffer_sRGB.txt
+        //WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, GL_TRUE,
+
+        // uncomment for multisampled framebuffer, from WGL_ARB_multisample extension
+        // https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_multisample.txt
+        //WGL_SAMPLE_BUFFERS_ARB, 1,
+        //WGL_SAMPLES_ARB,        4, // 4x MSAA
+
+        0,
+    };
+
+    int formatIndex;
+    UINT formats;
+    if (!wglChoosePixelFormatARB(hdc, attrib, NULL, 1, &formatIndex, &formats) || formats == 0)
+    {
+        Assert(false, "OpenGL does not support required pixel format!");
+    }
+
+    PIXELFORMATDESCRIPTOR format = { };
+    DescribePixelFormat(hdc, formatIndex, sizeof(format), &format);
 
     BOOL setResult = SetPixelFormat(hdc, formatIndex, &format);
     if (!setResult) {
@@ -311,34 +418,23 @@ static HGLRC setupOpenGL(HDC hdc) {
         ExitProcess(-1);
     }
 
-    HGLRC tempContext = wglCreateContext(hdc);
-    if (!tempContext) {
-        OutputDebugStringW(L"Could not create OpenGL context\n");
-        ExitProcess(-1);
-    }
-
-    wglMakeCurrent(hdc, tempContext);
-
-    glGetStringi = (glGetStringiF*)wglGetProcAddress("glGetStringi");
-    wglCreateContextAttribsARB = (wglCreateContextAttribsARBF*)wglGetProcAddress("wglCreateContextAttribsARB");
-    glDebugMessageCallback = (glDebugMessageCallbackF*)wglGetProcAddress("glDebugMessageCallback");
-
-    // Lookup extensions
-    GLint numExtensions = 0;
-    glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
-    OutputDebugStringW(L"OpenGL extensions:\n");
-    for (int i = 0; i < numExtensions; ++i) {
-        const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
-        OutputDebugStringW(L" - ");
-        OutputDebugStringA(extension);
-        OutputDebugStringW(L"\n");
-    }
+    //// Lookup extensions
+    //GLint numExtensions = 0;
+    //glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+    //OutputDebugStringW(L"OpenGL extensions:\n");
+    //for (int i = 0; i < numExtensions; ++i) {
+    //    const char* extension = (const char*)glGetStringi(GL_EXTENSIONS, i);
+    //    OutputDebugStringW(L" - ");
+    //    OutputDebugStringA(extension);
+    //    OutputDebugStringW(L"\n");
+    //}
 
     int attribs[] =
     {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
         WGL_CONTEXT_MINOR_VERSION_ARB, 6,
-        WGL_CONTEXT_FLAGS_ARB, 0,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
         0
     };
 
@@ -349,10 +445,9 @@ static HGLRC setupOpenGL(HDC hdc) {
     }
 
     wglMakeCurrent(hdc, glContext);
-    wglDeleteContext(tempContext);
 
     glDebugMessageCallback(glMsgCallback, nullptr);
-    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 
     int versionMajor = 0; 
     int versionMinor = 0;
@@ -367,9 +462,19 @@ static HGLRC setupOpenGL(HDC hdc) {
     return glContext;
 }
 
+void checkErrorGL() {
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        OutputDebugStringW(L"GL: Some error occured\n");
+    }
+
+}
+
 
 extern "C" int WINAPI WinMainCRTStartup(void)
 {
+    initOpenGL();
+
     Allocator pageAllocator = createPageAllocator();
     u64 arenaSize = 16 * KB;
     ArenaWithFallbackAllocator arenaAllocator = createArenaWithFallbackAllocator(&pageAllocator, arenaSize);
@@ -429,7 +534,19 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     HDC windowDC = GetDC(window);
     HGLRC glContext = setupOpenGL(windowDC);
 
+    wglSwapIntervalEXT(0);
+
     ShowWindow(window, SW_SHOW);
+
+    // enable alpha blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // disble depth testing
+    glDisable(GL_DEPTH_TEST);
+
+    // disable culling
+    glDisable(GL_CULL_FACE);
 
     g_running = true;
     while (g_running)
@@ -439,6 +556,9 @@ extern "C" int WINAPI WinMainCRTStartup(void)
         MSG msg = {};
         while (PeekMessageW(&msg, window, 0, 0, PM_REMOVE))
         {
+            //if (msg.message == WM_PAINT) {
+            //    break;
+            //}
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
@@ -447,9 +567,14 @@ extern "C" int WINAPI WinMainCRTStartup(void)
         {
             OutputDebugStringW(L"Left button clicked\n");
         }
+        
+        RECT rect;
+        GetClientRect(window, &rect);
+        int currentWidth = rect.right - rect.left;
+        int currentHeight = rect.bottom - rect.top;
 
-        glViewport(0, 0, windowWidth, windowHeight);
-        glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
+        glViewport(0, 0, currentWidth, currentHeight);
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         BOOL swapResult = SwapBuffers(windowDC);
@@ -457,6 +582,9 @@ extern "C" int WINAPI WinMainCRTStartup(void)
             OutputDebugStringW(L"Failed to swap buffers\n");
             DWORD error = GetLastError();
         }
+        /*glFinish();*/
+
+        OutputDebugStringW(L"Frame rendered\n");
     }
 
 
