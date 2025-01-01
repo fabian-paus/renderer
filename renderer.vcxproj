@@ -25,6 +25,8 @@
     <ClInclude Include="src\fp_allocator.h" />
     <ClInclude Include="src\fp_core.h" />
     <ClInclude Include="src\fp_obj.h" />
+    <ClInclude Include="src\fp_opengl.h" />
+    <ClInclude Include="src\fp_win32.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

@@ -55,3 +55,5 @@ struct DeferHelper
 #define CONCAT_2(x, y) CONCAT_1(x, y)
 #define CONCAT_COUNTER(x) CONCAT_2(x, __COUNTER__)
 #define defer DeferHelper CONCAT_COUNTER(defer) = [&]()
+
+#define Assert(expression) if(!(expression)) {*(volatile int *)0 = 0;}
