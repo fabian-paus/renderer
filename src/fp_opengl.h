@@ -82,11 +82,51 @@ static wglSwapIntervalEXTF* wglSwapIntervalEXT;
 
 
 // OpenGL extensions
+// https://registry.khronos.org/OpenGL/api/GL/glext.h
 
 #define GL_NUM_EXTENSIONS 33309
 
 #define GL_MAJOR_VERSION 0x821B
 #define GL_MINOR_VERSION 0x821C
+
+#define GL_FRAGMENT_SHADER                0x8B30
+#define GL_VERTEX_SHADER                  0x8B31
+
+#define GL_DELETE_STATUS                  0x8B80
+#define GL_COMPILE_STATUS                 0x8B81
+#define GL_LINK_STATUS                    0x8B82
+#define GL_VALIDATE_STATUS                0x8B83
+
+#define GL_ARRAY_BUFFER                   0x8892
+#define GL_ELEMENT_ARRAY_BUFFER           0x8893
+#define GL_ARRAY_BUFFER_BINDING           0x8894
+#define GL_ELEMENT_ARRAY_BUFFER_BINDING   0x8895
+#define GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING 0x889F
+#define GL_READ_ONLY                      0x88B8
+#define GL_WRITE_ONLY                     0x88B9
+#define GL_READ_WRITE                     0x88BA
+#define GL_BUFFER_ACCESS                  0x88BB
+#define GL_BUFFER_MAPPED                  0x88BC
+#define GL_BUFFER_MAP_POINTER             0x88BD
+#define GL_STREAM_DRAW                    0x88E0
+#define GL_STREAM_READ                    0x88E1
+#define GL_STREAM_COPY                    0x88E2
+#define GL_STATIC_DRAW                    0x88E4
+#define GL_STATIC_READ                    0x88E5
+#define GL_STATIC_COPY                    0x88E6
+#define GL_DYNAMIC_DRAW                   0x88E8
+#define GL_DYNAMIC_READ                   0x88E9
+#define GL_DYNAMIC_COPY                   0x88EA
+#define GL_SAMPLES_PASSED                 0x8914
+#define GL_SRC1_ALPHA                     0x8589
+
+#define GL_DEBUG_SEVERITY_HIGH            0x9146
+#define GL_DEBUG_SEVERITY_MEDIUM          0x9147
+#define GL_DEBUG_SEVERITY_LOW             0x9148
+#define GL_DEBUG_TYPE_MARKER              0x8268
+#define GL_DEBUG_TYPE_PUSH_GROUP          0x8269
+#define GL_DEBUG_TYPE_POP_GROUP           0x826A
+#define GL_DEBUG_SEVERITY_NOTIFICATION    0x826B
 
 #define GL_DEBUG_OUTPUT 0x92E0
 #define GL_DEBUG_OUTPUT_SYNCHRONOUS       0x8242
@@ -106,6 +146,66 @@ typedef DEBUGPROCF* DEBUGPROC;
 typedef void glDebugMessageCallbackF(DEBUGPROC callback, const void* userParam);
 static glDebugMessageCallbackF* glDebugMessageCallback;
 
+typedef void glGenBuffersF(GLsizei n, GLuint * buffers);
+static glGenBuffersF* glGenBuffers;
+
+typedef void glBindBufferF(GLenum target, GLuint buffer);
+static glBindBufferF* glBindBuffer;
+
+
+typedef void glBufferDataF(GLenum target, long int size, const void* data, GLenum usage);
+static glBufferDataF* glBufferData;
+
+typedef void glNamedBufferDataF(GLuint buffer, long int size, const void* data, GLenum usage);
+static glNamedBufferDataF* glNamedBufferData;
+
+typedef GLuint glCreateShaderF(GLenum shaderType);
+static glCreateShaderF* glCreateShader;
+
+typedef void glShaderSourceF(GLuint shader, GLsizei count, const char** string, const GLint* length);
+static glShaderSourceF* glShaderSource;
+
+typedef void glCompileShaderF(GLuint shader);
+static glCompileShaderF* glCompileShader;
+
+typedef void glGetShaderivF(GLuint shader, GLenum pname, GLint* params);
+static glGetShaderivF* glGetShaderiv;
+
+typedef void glGetShaderInfoLogF(GLuint shader, GLsizei maxLength, GLsizei* length, char* infoLog);
+static glGetShaderInfoLogF* glGetShaderInfoLog;
+
+typedef GLuint glCreateProgramF(void);
+static glCreateProgramF* glCreateProgram;
+
+typedef void glAttachShaderF(GLuint program, GLuint shader);
+static glAttachShaderF* glAttachShader;
+
+typedef void glLinkProgramF(GLuint program);
+static glLinkProgramF* glLinkProgram;
+
+typedef void glGetProgramivF(GLuint program, GLenum pname, GLint* params);
+static glGetProgramivF* glGetProgramiv;
+
+typedef void glGetProgramInfoLogF(GLuint program, GLsizei maxLength, GLsizei* length, char* infoLog);
+static glGetProgramInfoLogF* glGetProgramInfoLog;
+
+typedef void glUseProgramF(GLuint program);
+static glUseProgramF* glUseProgram;
+
+typedef void glDeleteShaderF(GLuint shader);
+static glDeleteShaderF* glDeleteShader;
+
+typedef void glVertexAttribPointerF(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer);
+static glVertexAttribPointerF* glVertexAttribPointer;
+
+typedef void glEnableVertexAttribArrayF(GLuint index);
+static glEnableVertexAttribArrayF* glEnableVertexAttribArray;
+
+typedef void glGenVertexArraysF(GLsizei n, GLuint* arrays);
+static glGenVertexArraysF* glGenVertexArrays;
+
+typedef void glBindVertexArrayF(GLuint array);
+static glBindVertexArrayF* glBindVertexArray;
 
 
 
@@ -144,11 +244,32 @@ static void gl_initialize() {
     win32_handleError(!currentOk, "Failed to make OpenGL context current");
 
 
-    glGetStringi = (glGetStringiF*)wglGetProcAddress("glGetStringi");
-    wglCreateContextAttribsARB = (wglCreateContextAttribsARBF*)wglGetProcAddress("wglCreateContextAttribsARB");
-    glDebugMessageCallback = (glDebugMessageCallbackF*)wglGetProcAddress("glDebugMessageCallback");
-    wglChoosePixelFormatARB = (wglChoosePixelFormatARBF*)wglGetProcAddress("wglChoosePixelFormatARB");
-    wglSwapIntervalEXT = (wglSwapIntervalEXTF*)wglGetProcAddress("wglSwapIntervalEXT");
+    wglCreateContextAttribsARB = (wglCreateContextAttribsARBF*) wglGetProcAddress("wglCreateContextAttribsARB");
+    wglChoosePixelFormatARB = (wglChoosePixelFormatARBF*)       wglGetProcAddress("wglChoosePixelFormatARB");
+    wglSwapIntervalEXT      = (wglSwapIntervalEXTF*)            wglGetProcAddress("wglSwapIntervalEXT");
+
+    glGetStringi            = (glGetStringiF*)          wglGetProcAddress("glGetStringi");
+    glDebugMessageCallback  = (glDebugMessageCallbackF*)wglGetProcAddress("glDebugMessageCallback");
+    glGenBuffers            = (glGenBuffersF*)          wglGetProcAddress("glGenBuffers");
+    glBindBuffer            = (glBindBufferF*)          wglGetProcAddress("glBindBuffer");
+    glBufferData            = (glBufferDataF*)          wglGetProcAddress("glBufferData");
+    glNamedBufferData = (glNamedBufferDataF*)wglGetProcAddress("glNamedBufferData");
+    glCreateShader = (glCreateShaderF*)wglGetProcAddress("glCreateShader");
+    glShaderSource = (glShaderSourceF*)wglGetProcAddress("glShaderSource");
+    glCompileShader = (glCompileShaderF*)wglGetProcAddress("glCompileShader");
+    glGetShaderiv = (glGetShaderivF*)wglGetProcAddress("glGetShaderiv");
+    glGetShaderInfoLog = (glGetShaderInfoLogF*)wglGetProcAddress("glGetShaderInfoLog");
+    glCreateProgram = (glCreateProgramF*)wglGetProcAddress("glCreateProgram");
+    glAttachShader = (glAttachShaderF*)wglGetProcAddress("glAttachShader");
+    glLinkProgram = (glLinkProgramF*)wglGetProcAddress("glLinkProgram");
+    glGetProgramiv = (glGetProgramivF*)wglGetProcAddress("glGetProgramiv");
+    glGetProgramInfoLog = (glGetProgramInfoLogF*)wglGetProcAddress("glGetProgramInfoLog");
+    glUseProgram = (glUseProgramF*)wglGetProcAddress("glUseProgram");
+    glDeleteShader = (glDeleteShaderF*)wglGetProcAddress("glDeleteShader");
+    glVertexAttribPointer = (glVertexAttribPointerF*)wglGetProcAddress("glVertexAttribPointer");
+    glEnableVertexAttribArray = (glEnableVertexAttribArrayF*)wglGetProcAddress("glEnableVertexAttribArray");
+    glGenVertexArrays = (glGenVertexArraysF*)wglGetProcAddress("glGenVertexArrays");
+    glBindVertexArray = (glBindVertexArrayF*)wglGetProcAddress("glBindVertexArray");
 
     wglMakeCurrent(dc, nullptr);
     wglDeleteContext(rc);

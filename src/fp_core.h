@@ -57,3 +57,6 @@ struct DeferHelper
 #define defer DeferHelper CONCAT_COUNTER(defer) = [&]()
 
 #define Assert(expression) if(!(expression)) {*(volatile int *)0 = 0;}
+
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)

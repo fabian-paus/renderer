@@ -164,7 +164,88 @@ void glMsgCallback(GLenum source,
     OutputDebugStringW(L"GL DEBUG: ");
     OutputDebugStringA(message);
     OutputDebugStringW(L"\n");
+    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) {
+        // Do not break on debug notifications
+        return;
+    }
+    DebugBreak();
 }
+
+static const char* VERTEX_SHADER_SIMPLE = 
+"#version 330 core\n"
+"#line " STR(__LINE__) "\n"
+R"(
+layout (location = 0) in vec3 pos;
+
+void main()
+{
+    gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
+}
+)";
+
+static const char* FRAGMENT_SHADER_SIMPLE = 
+"#version 330 core\n"
+"#line " STR(__LINE__) "\n"
+R"(
+void main()
+{
+    gl_FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+} 
+)";
+
+static void gl_compileShader(unsigned int shader, const char* source) {
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+
+    int success = 0;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512] = {};
+        glGetShaderInfoLog(shader, sizeof(infoLog), nullptr, infoLog);
+        OutputDebugStringW(L"GL shader compilation errors: \n");
+        OutputDebugStringA(infoLog);
+        OutputDebugStringW(L"\n");
+        DebugBreak();
+    }
+}
+
+static void gl_linkProgram(unsigned int program) {
+    glLinkProgram(program);
+
+    int success = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512] = {};
+        glGetProgramInfoLog(program, sizeof(infoLog), NULL, infoLog);
+        OutputDebugStringW(L"GL shader program link errors: \n");
+        OutputDebugStringA(infoLog);
+        OutputDebugStringW(L"\n");
+        DebugBreak();
+    }
+}
+
+struct Renderer {
+    unsigned int vertexBuffer;
+
+    unsigned int vertexShader;
+    unsigned int fragmentShader;
+    unsigned int shaderProgram;
+
+    void setup() {
+        glGenBuffers(1, &vertexBuffer);
+
+        vertexShader = glCreateShader(GL_VERTEX_SHADER);
+        gl_compileShader(vertexShader, VERTEX_SHADER_SIMPLE);
+
+        fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+        gl_compileShader(fragmentShader, FRAGMENT_SHADER_SIMPLE);
+
+        shaderProgram = glCreateProgram();
+        glAttachShader(shaderProgram, vertexShader);
+        glAttachShader(shaderProgram, fragmentShader);
+        gl_linkProgram(shaderProgram);
+    }
+};
 
 
 extern "C" int WINAPI WinMainCRTStartup(void)
@@ -237,6 +318,28 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     // Disable vsync
     wglSwapIntervalEXT(0);
 
+    Renderer renderer = {};
+    renderer.setup();
+
+    float vertices[] = {
+        -0.5f, -0.5f, 0.0f,
+        0.5f, -0.5f, 0.0f,
+        0.0f,  0.5f, 0.0f
+    };  
+
+    unsigned int vertexArray = 0;
+    glGenVertexArrays(1, &vertexArray);
+    glBindVertexArray(vertexArray);
+
+    // TODO: Abstract this away
+    glBindBuffer(GL_ARRAY_BUFFER, renderer.vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glUseProgram(renderer.shaderProgram);
+
     ShowWindow(window, SW_SHOW);
 
     // enable alpha blending
@@ -275,9 +378,14 @@ extern "C" int WINAPI WinMainCRTStartup(void)
         int currentHeight = rect.bottom - rect.top;
 
         glViewport(0, 0, currentWidth, currentHeight);
-        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glUseProgram(renderer.shaderProgram);
+        glBindVertexArray(vertexArray);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         BOOL swapResult = SwapBuffers(deviceContext);
         if (!swapResult) {
             OutputDebugStringW(L"Failed to swap buffers\n");
