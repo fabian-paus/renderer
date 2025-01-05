@@ -8,6 +8,7 @@
 #include "fp_obj.h"
 #include "fp_win32.h"
 #include "fp_opengl.h"
+#include "fp_math.h"
 
 #include <Windows.h>
 #include <gl/GL.h>
@@ -45,21 +46,24 @@ bool g_running = false;
 // This variable is expected by the compiler/linker if floats/doubles are used
 extern "C" int _fltused = 0;
 
+// Sometimes the compiler uses memset although we are compiling without standard libary :(
+#pragma function(memset)
+void* __cdecl memset(void* destination, int value, size_t size) {
+    char* dest = (char*)destination;
+    for (int i = 0; i < size; ++i) {
+        dest[i] = value;
+    }
+    return dest;
+}
 
 // Window procedure handles messages send from the OS
 // We want to collect mouse and keyboard input events, so that they are available 
 // in an OS independent manner
-LRESULT CALLBACK MainWndProc(
-    HWND window,        // handle to window
-    UINT message,        // message identifier
-    WPARAM wParam,    // first message parameter
-    LPARAM lParam)    // second message parameter
+LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
-
     switch (message)
     {
     case WM_CREATE:
-        // Initialize the window. 
         return 0;
 
     case WM_PAINT:
@@ -69,10 +73,6 @@ LRESULT CALLBACK MainWndProc(
         // I seem to remember that this was not the case in the past :thinking_emoji:
         // If we do not handle the message at all, that we render again.
         // Presumably, because DefWindowProc handles this case correctly.
-        //PAINTSTRUCT ps;
-        //HDC dc = BeginPaint(window, &ps);
-        //EndPaint(window, &ps);
-        //return 0;
         return DefWindowProcW(window, message, wParam, lParam);
     }
 
@@ -153,7 +153,7 @@ LRESULT CALLBACK MainWndProc(
 
 
 
-void glMsgCallback(GLenum source,
+void ourGlErrorCallback(GLenum source,
     GLenum type,
     GLuint id,
     GLenum severity,
@@ -177,9 +177,12 @@ static const char* VERTEX_SHADER_SIMPLE =
 R"(
 layout (location = 0) in vec3 pos;
 
+out vec4 vertexColor;
+
 void main()
 {
     gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
+    vertexColor = vec4(0.5, 0.0, 0.0, 1.0);
 }
 )";
 
@@ -187,9 +190,16 @@ static const char* FRAGMENT_SHADER_SIMPLE =
 "#version 330 core\n"
 "#line " STR(__LINE__) "\n"
 R"(
+out vec4 FragColor;
+
+//in vec4 vertexColor;
+uniform vec4 uniformColor;
+
 void main()
 {
-    gl_FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+    vec4 color = uniformColor;
+    // color.y = sin(color.y) / 2.0f + 0.5f;
+    FragColor = color;
 } 
 )";
 
@@ -247,8 +257,7 @@ struct Renderer {
     }
 };
 
-
-extern "C" int WINAPI WinMainCRTStartup(void)
+static int mainFunction()
 {
     gl_initialize();
 
@@ -312,7 +321,7 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     HGLRC glContext = gl_createContext(deviceContext);
 
     // Enable debugging
-    glDebugMessageCallback(glMsgCallback, nullptr);
+    glDebugMessageCallback(ourGlErrorCallback, nullptr);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 
     // Disable vsync
@@ -338,6 +347,8 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
+    int uniformColorIndex = glGetUniformLocation(renderer.shaderProgram, "uniformColor");
+
     glUseProgram(renderer.shaderProgram);
 
     ShowWindow(window, SW_SHOW);
@@ -355,16 +366,18 @@ extern "C" int WINAPI WinMainCRTStartup(void)
     g_running = true;
     while (g_running)
     {
+        ULONGLONG ticks = GetTickCount64();
+
         g_userInput.mouseButtonClicked = 0;
 
         MSG msg = {};
         while (PeekMessageW(&msg, window, 0, 0, PM_REMOVE))
         {
-            //if (msg.message == WM_PAINT) {
-            //    break;
-            //}
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
+        }
+        if (!g_running) {
+            break;
         }
 
         if (g_userInput.isDown(MouseButton::Left))
@@ -383,6 +396,10 @@ extern "C" int WINAPI WinMainCRTStartup(void)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(renderer.shaderProgram);
+        float timeInSeconds = 0.001f * ticks;
+        float green = sin(2*timeInSeconds) / 2.0f + 0.5f;
+        glUniform4f(uniformColorIndex, 0.0, green, 0.0, 1.0);
+
         glBindVertexArray(vertexArray);
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
@@ -395,7 +412,12 @@ extern "C" int WINAPI WinMainCRTStartup(void)
 
     model.free(&arenaAllocator);
 
-    // We have to manually exit the process since we do not use the C Standard Library
-    ExitProcess(0);
     return 0;
+}
+
+extern "C" int WINAPI WinMainCRTStartup(void) {
+    int exitCode = mainFunction();
+
+    // We have to manually exit the process since we do not use the C Standard Library
+    ExitProcess(exitCode);
 }

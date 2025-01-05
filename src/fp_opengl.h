@@ -211,6 +211,15 @@ static glGenVertexArraysF* glGenVertexArrays;
 typedef void glBindVertexArrayF(GLuint array);
 static glBindVertexArrayF* glBindVertexArray;
 
+typedef GLint glGetUniformLocationF(GLuint program, const char* name);
+static glGetUniformLocationF* glGetUniformLocation;
+
+typedef void glUniform4fF(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+static glUniform4fF* glUniform4f;
+
+typedef void glUniformMatrix4fvF(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
+static glUniformMatrix4fvF* glUniformMatrix4fv;
+
 
 
 static void gl_initialize() {
@@ -274,6 +283,9 @@ static void gl_initialize() {
     glEnableVertexAttribArray = (glEnableVertexAttribArrayF*)wglGetProcAddress("glEnableVertexAttribArray");
     glGenVertexArrays = (glGenVertexArraysF*)wglGetProcAddress("glGenVertexArrays");
     glBindVertexArray = (glBindVertexArrayF*)wglGetProcAddress("glBindVertexArray");
+    glGetUniformLocation = (glGetUniformLocationF*)wglGetProcAddress("glGetUniformLocation");
+    glUniform4f = (glUniform4fF*)wglGetProcAddress("glUniform4f");
+    glUniformMatrix4fv = (glUniformMatrix4fvF*)wglGetProcAddress("glUniformMatrix4fv");
 
     wglMakeCurrent(dc, nullptr);
     wglDeleteContext(rc);

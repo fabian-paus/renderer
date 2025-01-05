@@ -24,6 +24,7 @@
   <ItemGroup>
     <ClInclude Include="src\fp_allocator.h" />
     <ClInclude Include="src\fp_core.h" />
+    <ClInclude Include="src\fp_math.h" />
     <ClInclude Include="src\fp_obj.h" />
     <ClInclude Include="src\fp_opengl.h" />
     <ClInclude Include="src\fp_win32.h" />
@@ -136,6 +137,8 @@
       <SupportJustMyCode>false</SupportJustMyCode>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -158,6 +161,7 @@
       <ExceptionHandling>false</ExceptionHandling>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
