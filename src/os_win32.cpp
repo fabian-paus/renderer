@@ -43,12 +43,13 @@ UserInput g_userInput = {};
 bool g_running = false;
 
 
-// This variable is expected by the compiler/linker if floats/doubles are used
+// This variable is expected by the linker if floats or doubles are used
 extern "C" int _fltused = 0;
 
 // Sometimes the compiler uses memset although we are compiling without standard libary :(
 #pragma function(memset)
 void* __cdecl memset(void* destination, int value, size_t size) {
+    // You should probably look a more optimized version of memset
     char* dest = (char*)destination;
     for (int i = 0; i < size; ++i) {
         dest[i] = value;
@@ -212,6 +213,8 @@ static void gl_compileShader(unsigned int shader, const char* source) {
     if (!success) {
         char infoLog[512] = {};
         glGetShaderInfoLog(shader, sizeof(infoLog), nullptr, infoLog);
+
+        // Output the info log
         OutputDebugStringW(L"GL shader compilation errors: \n");
         OutputDebugStringA(infoLog);
         OutputDebugStringW(L"\n");
