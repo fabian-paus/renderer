@@ -177,13 +177,14 @@ static const char* VERTEX_SHADER_SIMPLE =
 "#line " STR(__LINE__) "\n"
 R"(
 layout (location = 0) in vec3 pos;
+layout (location = 1) in vec4 color;
 
 out vec4 vertexColor;
 
 void main()
 {
     gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
-    vertexColor = vec4(0.5, 0.0, 0.0, 1.0);
+    vertexColor = color;
 }
 )";
 
@@ -193,16 +194,86 @@ static const char* FRAGMENT_SHADER_SIMPLE =
 R"(
 out vec4 FragColor;
 
-//in vec4 vertexColor;
-uniform vec4 uniformColor;
+in vec4 vertexColor;
+//uniform vec4 uniformColor;
 
 void main()
 {
-    vec4 color = uniformColor;
-    // color.y = sin(color.y) / 2.0f + 0.5f;
-    FragColor = color;
+    FragColor = vertexColor;
 } 
 )";
+
+struct Color {
+    float color[4];
+};
+
+static Color red() {
+    Color color = { 1.0f, 0.0f, 0.0f, 1.0f };
+    return color;
+}
+
+static Color green() {
+    Color color = { 0.0f, 1.0f, 0.0f, 1.0f };
+    return color;
+}
+
+static Color blue() {
+    Color color = { 0.0f, 0.0f, 1.0f, 1.0f };
+    return color;
+}
+
+#pragma pack(1)
+struct ColoredVertex {
+    float pos[3];
+    Color color;
+};
+
+ColoredVertex vertexGrid[6 * 12];
+
+void fillVertices() {
+    ColoredVertex* vertex = vertexGrid;
+    float size = 0.05f;
+    Color colors[] = { red(), green(), blue() };
+    for (int y = 0; y < 3; ++y) {
+        float yPos = 0.1f * y;
+        Color color = colors[y];
+        for (int x = 0; x < 4; ++x) {
+            float xPos = 0.1f * x;
+            // Six vertices to describe a quad
+            vertex->pos[0] = xPos;
+            vertex->pos[1] = yPos;
+            vertex->pos[2] = 0.0f;
+            vertex->color = color;
+            ++vertex;
+            vertex->pos[0] = xPos + size;
+            vertex->pos[1] = yPos;
+            vertex->pos[2] = 0.0f;
+            vertex->color = color;
+            ++vertex;
+            vertex->pos[0] = xPos;
+            vertex->pos[1] = yPos + size;
+            vertex->pos[2] = 0.0f;
+            vertex->color = color;
+            ++vertex;
+
+            vertex->pos[0] = xPos + size;
+            vertex->pos[1] = yPos;
+            vertex->pos[2] = 0.0f;
+            vertex->color = color;
+            ++vertex;
+            vertex->pos[0] = xPos + size;
+            vertex->pos[1] = yPos + size;
+            vertex->pos[2] = 0.0f;
+            vertex->color = color;
+            ++vertex;
+            vertex->pos[0] = xPos;
+            vertex->pos[1] = yPos + size;
+            vertex->pos[2] = 0.0f;
+            vertex->color = color;
+            ++vertex;
+        }
+    }
+}
 
 static void gl_compileShader(unsigned int shader, const char* source) {
     glShaderSource(shader, 1, &source, NULL);
@@ -268,6 +339,7 @@ static int mainFunction()
     u64 arenaSize = 16 * KB;
     ArenaWithFallbackAllocator arenaAllocator = createArenaWithFallbackAllocator(&pageAllocator, arenaSize);
 
+#if 0
     wchar_t const* filename = L"data/Deer.obj";
 
     ReadFileResult fileResult = readEntireFile(filename);
@@ -285,6 +357,7 @@ static int mainFunction()
     OutputDebugStringW(L"Read file content successfully!\n");
 
     ObjModel model = parseObjModel(fileResult.data, fileResult.size, &arenaAllocator);
+#endif 
 
 
     // Create a window
@@ -334,21 +407,41 @@ static int mainFunction()
     renderer.setup();
 
     float vertices[] = {
-        -0.5f, -0.5f, 0.0f,
-        0.5f, -0.5f, 0.0f,
-        0.0f,  0.5f, 0.0f
+        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+        0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+        0.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
     };  
+
+    fillVertices();
+
+    // TODO: Abstract this away
+    glBindBuffer(GL_ARRAY_BUFFER, renderer.vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertexGrid), vertexGrid, GL_STATIC_DRAW);
 
     unsigned int vertexArray = 0;
     glGenVertexArrays(1, &vertexArray);
     glBindVertexArray(vertexArray);
 
-    // TODO: Abstract this away
-    glBindBuffer(GL_ARRAY_BUFFER, renderer.vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+    //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    
+    int vertexSize = sizeof(ColoredVertex);
+    // The binding index connects the attribute location (here 0) with a specific buffer
+    // They do not have to be the same
+    int positionBindingIndex = 12; 
+    glVertexArrayVertexBuffer(vertexArray, positionBindingIndex, renderer.vertexBuffer, 0, vertexSize);
+    int positionIndex = 0;
+    glVertexArrayAttribFormat(vertexArray, positionIndex, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(vertexArray, positionIndex, positionBindingIndex);
+
+    int colorBindingIndex = 13;
+    glVertexArrayVertexBuffer(vertexArray, colorBindingIndex, renderer.vertexBuffer, 3 * sizeof(float), vertexSize);
+    int colorIndex = 1;
+    glVertexArrayAttribFormat(vertexArray, positionIndex, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(vertexArray, colorIndex, colorBindingIndex);
+
+    glEnableVertexAttribArray(positionIndex);
+    glEnableVertexAttribArray(colorIndex);
 
     int uniformColorIndex = glGetUniformLocation(renderer.shaderProgram, "uniformColor");
 
@@ -404,7 +497,7 @@ static int mainFunction()
         glUniform4f(uniformColorIndex, 0.0, green, 0.0, 1.0);
 
         glBindVertexArray(vertexArray);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawArrays(GL_TRIANGLES, 0, 6 * 12);
 
         BOOL swapResult = SwapBuffers(deviceContext);
         if (!swapResult) {
@@ -413,7 +506,7 @@ static int mainFunction()
     }
 
 
-    model.free(&arenaAllocator);
+    //model.free(&arenaAllocator);
 
     return 0;
 }

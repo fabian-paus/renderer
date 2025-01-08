@@ -135,6 +135,8 @@ static wglSwapIntervalEXTF* wglSwapIntervalEXT;
 #define GL_DEBUG_OUTPUT 0x92E0
 #define GL_DEBUG_OUTPUT_SYNCHRONOUS       0x8242
 
+typedef intptr_t GLintptr;
+
 typedef const GLubyte* glGetStringiF(GLenum name, GLuint index);
 static glGetStringiF* glGetStringi;
 
@@ -220,6 +222,17 @@ static glUniform4fF* glUniform4f;
 typedef void glUniformMatrix4fvF(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
 static glUniformMatrix4fvF* glUniformMatrix4fv;
 
+typedef void glVertexArrayAttribFormatF(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLboolean normalized, GLuint relativeoffset);
+static glVertexArrayAttribFormatF* glVertexArrayAttribFormat;
+
+typedef void glVertexArrayAttribIFormatF(GLuint vaobj, GLuint attribindex, GLint size, GLenum type, GLuint relativeoffset);
+static glVertexArrayAttribIFormatF* glVertexArrayAttribIFormat;
+
+typedef void glVertexArrayAttribBindingF(GLuint vaobj, GLuint attribindex, GLuint bindingindex);
+static glVertexArrayAttribBindingF* glVertexArrayAttribBinding;
+
+typedef void glVertexArrayVertexBufferF(GLuint vaobj, GLuint bindingindex, GLuint buffer, GLintptr offset, GLsizei stride);
+static glVertexArrayVertexBufferF* glVertexArrayVertexBuffer;
 
 
 static void gl_initialize() {
@@ -286,6 +299,11 @@ static void gl_initialize() {
     glGetUniformLocation = (glGetUniformLocationF*)wglGetProcAddress("glGetUniformLocation");
     glUniform4f = (glUniform4fF*)wglGetProcAddress("glUniform4f");
     glUniformMatrix4fv = (glUniformMatrix4fvF*)wglGetProcAddress("glUniformMatrix4fv");
+    glVertexArrayAttribFormat = (glVertexArrayAttribFormatF*)wglGetProcAddress("glVertexArrayAttribFormat");
+    glVertexArrayAttribIFormat = (glVertexArrayAttribIFormatF*)wglGetProcAddress("glVertexArrayAttribIFormat");
+    glVertexArrayAttribBinding = (glVertexArrayAttribBindingF*)wglGetProcAddress("glVertexArrayAttribBinding");
+    glVertexArrayVertexBuffer = (glVertexArrayVertexBufferF*)wglGetProcAddress("glVertexArrayVertexBuffer");
+
 
     wglMakeCurrent(dc, nullptr);
     wglDeleteContext(rc);
