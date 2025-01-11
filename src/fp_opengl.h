@@ -384,3 +384,36 @@ static void gl_printExtensions() {
         OutputDebugStringW(L"\n");
     }
 }
+
+static void gl_compileShader(unsigned int shader, const char* source) {
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+
+    int success = 0;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512] = {};
+        glGetShaderInfoLog(shader, sizeof(infoLog), nullptr, infoLog);
+
+        // Output the info log
+        OutputDebugStringW(L"GL shader compilation errors: \n");
+        OutputDebugStringA(infoLog);
+        OutputDebugStringW(L"\n");
+        DebugBreak();
+    }
+}
+
+static void gl_linkProgram(unsigned int program) {
+    glLinkProgram(program);
+
+    int success = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512] = {};
+        glGetProgramInfoLog(program, sizeof(infoLog), NULL, infoLog);
+        OutputDebugStringW(L"GL shader program link errors: \n");
+        OutputDebugStringA(infoLog);
+        OutputDebugStringW(L"\n");
+        DebugBreak();
+    }
+}

@@ -13,6 +13,103 @@
 #include <Windows.h>
 #include <gl/GL.h>
 
+static const char* VERTEX_SHADER_SIMPLE =
+"#version 330 core\n"
+"#line " STR(__LINE__) "\n"
+R"(
+layout (location = 0) in vec3 pos;
+layout (location = 1) in vec4 color;
+
+uniform mat4 projection;
+
+out vec4 vertexColor;
+
+void main()
+{
+    vec4 pos = projection * vec4(pos.x, pos.y, pos.z, 1.0);
+    gl_Position = pos;
+    vertexColor = color;
+}
+)";
+
+static const char* FRAGMENT_SHADER_SIMPLE =
+"#version 330 core\n"
+"#line " STR(__LINE__) "\n"
+R"(
+out vec4 FragColor;
+
+in vec4 vertexColor;
+//uniform vec4 uniformColor;
+
+void main()
+{
+    FragColor = vertexColor;
+} 
+)";
+
+struct Renderer {
+    HDC deviceContext;
+
+    unsigned int vertexArray;
+    unsigned int vertexBuffer;
+
+    unsigned int vertexShader;
+    unsigned int fragmentShader;
+    unsigned int shaderProgram;
+
+    int projectionLocation;
+
+    void setup(HDC dc) {
+        deviceContext = dc;
+
+        glGenVertexArrays(1, &vertexArray);
+        glBindVertexArray(vertexArray);
+
+        glGenBuffers(1, &vertexBuffer);
+
+        vertexShader = glCreateShader(GL_VERTEX_SHADER);
+        gl_compileShader(vertexShader, VERTEX_SHADER_SIMPLE);
+
+        fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+        gl_compileShader(fragmentShader, FRAGMENT_SHADER_SIMPLE);
+
+        shaderProgram = glCreateProgram();
+        glAttachShader(shaderProgram, vertexShader);
+        glAttachShader(shaderProgram, fragmentShader);
+        gl_linkProgram(shaderProgram);
+
+    }
+};
+
+Renderer g_renderer;
+
+static void render(int width, int height) {
+    glViewport(0, 0, width, height);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glUseProgram(g_renderer.shaderProgram);
+    //float timeInSeconds = 0.001f * ticks;
+    //float green = sin(2 * timeInSeconds) / 2.0f + 0.5f;
+    //glUniform4f(uniformColorIndex, 0.0, green, 0.0, 1.0);
+
+    float transformMatrix[16] = {
+        2.0f / width, 0.0f,  0.0f, -1.0f,
+        0.0f, 2.0f / height, 0.0f, -1.0f,
+        0.0f, 0.0f,                1.0f, 0.0f,
+        0.0f, 0.0f,                0.0f, 1.0f,
+    };
+    glUniformMatrix4fv(g_renderer.projectionLocation, 1, GL_TRUE, transformMatrix);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6 * 12);
+
+    BOOL swapResult = SwapBuffers(g_renderer.deviceContext);
+    if (!swapResult) {
+        OutputDebugStringW(L"Failed to swap buffers\n");
+    }
+}
+
 enum class MouseButton
 {
     None   = 0,
@@ -78,7 +175,17 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
     }
 
     case WM_SIZE:
-        // Set the size and position of the window. 
+        {
+            // We have to render the image here to get smooth resizing behaviour
+            int width = LOWORD(lParam);
+            int height = LOWORD(lParam);
+            RECT rect;
+            GetClientRect(window, &rect);
+            int renderWidth = rect.right - rect.left;
+            int renderHeight = rect.bottom - rect.top;
+
+            render(renderWidth, renderHeight);
+        }
         return 0;
 
     case WM_DESTROY:
@@ -172,37 +279,6 @@ void ourGlErrorCallback(GLenum source,
     DebugBreak();
 }
 
-static const char* VERTEX_SHADER_SIMPLE = 
-"#version 330 core\n"
-"#line " STR(__LINE__) "\n"
-R"(
-layout (location = 0) in vec3 pos;
-layout (location = 1) in vec4 color;
-
-out vec4 vertexColor;
-
-void main()
-{
-    gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
-    vertexColor = color;
-}
-)";
-
-static const char* FRAGMENT_SHADER_SIMPLE = 
-"#version 330 core\n"
-"#line " STR(__LINE__) "\n"
-R"(
-out vec4 FragColor;
-
-in vec4 vertexColor;
-//uniform vec4 uniformColor;
-
-void main()
-{
-    FragColor = vertexColor;
-} 
-)";
-
 struct Color {
     float color[4];
 };
@@ -232,13 +308,13 @@ ColoredVertex vertexGrid[6 * 12];
 
 void fillVertices() {
     ColoredVertex* vertex = vertexGrid;
-    float size = 0.05f;
+    float size = 80.0f;
     Color colors[] = { red(), green(), blue() };
     for (int y = 0; y < 3; ++y) {
-        float yPos = 0.1f * y;
+        float yPos = 100.0f * y;
         Color color = colors[y];
         for (int x = 0; x < 4; ++x) {
-            float xPos = 0.1f * x;
+            float xPos = 100.0f * x;
             // Six vertices to describe a quad
             vertex->pos[0] = xPos;
             vertex->pos[1] = yPos;
@@ -275,62 +351,6 @@ void fillVertices() {
     }
 }
 
-static void gl_compileShader(unsigned int shader, const char* source) {
-    glShaderSource(shader, 1, &source, NULL);
-    glCompileShader(shader);
-
-    int success = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char infoLog[512] = {};
-        glGetShaderInfoLog(shader, sizeof(infoLog), nullptr, infoLog);
-
-        // Output the info log
-        OutputDebugStringW(L"GL shader compilation errors: \n");
-        OutputDebugStringA(infoLog);
-        OutputDebugStringW(L"\n");
-        DebugBreak();
-    }
-}
-
-static void gl_linkProgram(unsigned int program) {
-    glLinkProgram(program);
-
-    int success = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        char infoLog[512] = {};
-        glGetProgramInfoLog(program, sizeof(infoLog), NULL, infoLog);
-        OutputDebugStringW(L"GL shader program link errors: \n");
-        OutputDebugStringA(infoLog);
-        OutputDebugStringW(L"\n");
-        DebugBreak();
-    }
-}
-
-struct Renderer {
-    unsigned int vertexBuffer;
-
-    unsigned int vertexShader;
-    unsigned int fragmentShader;
-    unsigned int shaderProgram;
-
-    void setup() {
-        glGenBuffers(1, &vertexBuffer);
-
-        vertexShader = glCreateShader(GL_VERTEX_SHADER);
-        gl_compileShader(vertexShader, VERTEX_SHADER_SIMPLE);
-
-        fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-        gl_compileShader(fragmentShader, FRAGMENT_SHADER_SIMPLE);
-
-        shaderProgram = glCreateProgram();
-        glAttachShader(shaderProgram, vertexShader);
-        glAttachShader(shaderProgram, fragmentShader);
-        gl_linkProgram(shaderProgram);
-    }
-};
-
 static int mainFunction()
 {
     gl_initialize();
@@ -357,6 +377,7 @@ static int mainFunction()
     OutputDebugStringW(L"Read file content successfully!\n");
 
     ObjModel model = parseObjModel(fileResult.data, fileResult.size, &arenaAllocator);
+    defer{ model.free(&arenaAllocator); }
 #endif 
 
 
@@ -403,8 +424,7 @@ static int mainFunction()
     // Disable vsync
     wglSwapIntervalEXT(0);
 
-    Renderer renderer = {};
-    renderer.setup();
+    g_renderer.setup(deviceContext);
 
     float vertices[] = {
         -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
@@ -415,37 +435,31 @@ static int mainFunction()
     fillVertices();
 
     // TODO: Abstract this away
-    glBindBuffer(GL_ARRAY_BUFFER, renderer.vertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, g_renderer.vertexBuffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertexGrid), vertexGrid, GL_STATIC_DRAW);
-
-    unsigned int vertexArray = 0;
-    glGenVertexArrays(1, &vertexArray);
-    glBindVertexArray(vertexArray);
-
-
-    //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     
     int vertexSize = sizeof(ColoredVertex);
     // The binding index connects the attribute location (here 0) with a specific buffer
     // They do not have to be the same
     int positionBindingIndex = 12; 
-    glVertexArrayVertexBuffer(vertexArray, positionBindingIndex, renderer.vertexBuffer, 0, vertexSize);
+    glVertexArrayVertexBuffer(g_renderer.vertexArray, positionBindingIndex, g_renderer.vertexBuffer, 0, vertexSize);
     int positionIndex = 0;
-    glVertexArrayAttribFormat(vertexArray, positionIndex, 3, GL_FLOAT, GL_FALSE, 0);
-    glVertexArrayAttribBinding(vertexArray, positionIndex, positionBindingIndex);
+    glVertexArrayAttribFormat(g_renderer.vertexArray, positionIndex, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(g_renderer.vertexArray, positionIndex, positionBindingIndex);
 
     int colorBindingIndex = 13;
-    glVertexArrayVertexBuffer(vertexArray, colorBindingIndex, renderer.vertexBuffer, 3 * sizeof(float), vertexSize);
+    glVertexArrayVertexBuffer(g_renderer.vertexArray, colorBindingIndex, g_renderer.vertexBuffer, 3 * sizeof(float), vertexSize);
     int colorIndex = 1;
-    glVertexArrayAttribFormat(vertexArray, positionIndex, 3, GL_FLOAT, GL_FALSE, 0);
-    glVertexArrayAttribBinding(vertexArray, colorIndex, colorBindingIndex);
+    glVertexArrayAttribFormat(g_renderer.vertexArray, positionIndex, 3, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(g_renderer.vertexArray, colorIndex, colorBindingIndex);
 
     glEnableVertexAttribArray(positionIndex);
     glEnableVertexAttribArray(colorIndex);
 
-    int uniformColorIndex = glGetUniformLocation(renderer.shaderProgram, "uniformColor");
+    int uniformColorIndex = glGetUniformLocation(g_renderer.shaderProgram, "uniformColor");
+    g_renderer.projectionLocation = glGetUniformLocation(g_renderer.shaderProgram, "projection");
 
-    glUseProgram(renderer.shaderProgram);
+    glUseProgram(g_renderer.shaderProgram);
 
     ShowWindow(window, SW_SHOW);
 
@@ -478,35 +492,16 @@ static int mainFunction()
 
         if (g_userInput.isDown(MouseButton::Left))
         {
-            OutputDebugStringW(L"Left button clicked\n");
+            // OutputDebugStringW(L"Left button clicked\n");
         }
         
         RECT rect;
         GetClientRect(window, &rect);
-        int currentWidth = rect.right - rect.left;
-        int currentHeight = rect.bottom - rect.top;
+        int renderWidth = rect.right - rect.left;
+        int renderHeight = rect.bottom - rect.top;
 
-        glViewport(0, 0, currentWidth, currentHeight);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glUseProgram(renderer.shaderProgram);
-        float timeInSeconds = 0.001f * ticks;
-        float green = sin(2*timeInSeconds) / 2.0f + 0.5f;
-        glUniform4f(uniformColorIndex, 0.0, green, 0.0, 1.0);
-
-        glBindVertexArray(vertexArray);
-        glDrawArrays(GL_TRIANGLES, 0, 6 * 12);
-
-        BOOL swapResult = SwapBuffers(deviceContext);
-        if (!swapResult) {
-            OutputDebugStringW(L"Failed to swap buffers\n");
-        }
+        render(renderWidth, renderHeight);
     }
-
-
-    //model.free(&arenaAllocator);
 
     return 0;
 }
