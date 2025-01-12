@@ -42,6 +42,11 @@ struct Allocator
     }
 
     template <typename T>
+    T* allocateSingle() {
+        return (T*)allocate(sizeof(T));
+    }
+
+    template <typename T>
     T* allocateArray(u64 count)
     {
         return (T*)allocate(count * sizeof(T));

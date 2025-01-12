@@ -9,77 +9,10 @@
 #include "fp_win32.h"
 #include "fp_opengl.h"
 #include "fp_math.h"
+#include "fp_renderer.h"
 
 #include <Windows.h>
 #include <gl/GL.h>
-
-static const char* VERTEX_SHADER_SIMPLE =
-"#version 330 core\n"
-"#line " STR(__LINE__) "\n"
-R"(
-layout (location = 0) in vec3 pos;
-layout (location = 1) in vec4 color;
-
-uniform mat4 projection;
-
-out vec4 vertexColor;
-
-void main()
-{
-    vec4 pos = projection * vec4(pos.x, pos.y, pos.z, 1.0);
-    gl_Position = pos;
-    vertexColor = color;
-}
-)";
-
-static const char* FRAGMENT_SHADER_SIMPLE =
-"#version 330 core\n"
-"#line " STR(__LINE__) "\n"
-R"(
-out vec4 FragColor;
-
-in vec4 vertexColor;
-//uniform vec4 uniformColor;
-
-void main()
-{
-    FragColor = vertexColor;
-} 
-)";
-
-struct Renderer {
-    HDC deviceContext;
-
-    unsigned int vertexArray;
-    unsigned int vertexBuffer;
-
-    unsigned int vertexShader;
-    unsigned int fragmentShader;
-    unsigned int shaderProgram;
-
-    int projectionLocation;
-
-    void setup(HDC dc) {
-        deviceContext = dc;
-
-        glGenVertexArrays(1, &vertexArray);
-        glBindVertexArray(vertexArray);
-
-        glGenBuffers(1, &vertexBuffer);
-
-        vertexShader = glCreateShader(GL_VERTEX_SHADER);
-        gl_compileShader(vertexShader, VERTEX_SHADER_SIMPLE);
-
-        fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-        gl_compileShader(fragmentShader, FRAGMENT_SHADER_SIMPLE);
-
-        shaderProgram = glCreateProgram();
-        glAttachShader(shaderProgram, vertexShader);
-        glAttachShader(shaderProgram, fragmentShader);
-        gl_linkProgram(shaderProgram);
-
-    }
-};
 
 Renderer g_renderer;
 
@@ -102,13 +35,13 @@ static void render(int width, int height) {
     };
     glUniformMatrix4fv(g_renderer.projectionLocation, 1, GL_TRUE, transformMatrix);
 
-    glDrawArrays(GL_TRIANGLES, 0, 6 * 12);
+    g_renderer.render();
+    //glDrawArrays(GL_TRIANGLES, 0, 6 * 12);
 
     BOOL swapResult = SwapBuffers(g_renderer.deviceContext);
     if (!swapResult) {
         OutputDebugStringW(L"Failed to swap buffers\n");
     }
-    glFinish();
 }
 
 enum class MouseButton
@@ -147,7 +80,7 @@ extern "C" int _fltused = 0;
 // Sometimes the compiler uses memset although we are compiling without standard libary :(
 #pragma function(memset)
 void* __cdecl memset(void* destination, int value, size_t size) {
-    // You should probably look a more optimized version of memset
+    // You should probably look for a more optimized version of memset
     char* dest = (char*)destination;
     for (int i = 0; i < size; ++i) {
         dest[i] = value;
@@ -158,7 +91,7 @@ void* __cdecl memset(void* destination, int value, size_t size) {
 // Window procedure handles messages send from the OS
 // We want to collect mouse and keyboard input events, so that they are available 
 // in an OS independent manner
-LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
@@ -181,9 +114,7 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
             int width = LOWORD(lParam);
             int height = LOWORD(lParam);
 
-            g_renderer.deviceContext = GetDC(window);
             render(width, height);
-            ReleaseDC(window, g_renderer.deviceContext);
         }
         return 0;
 
@@ -278,74 +209,19 @@ void ourGlErrorCallback(GLenum source,
     DebugBreak();
 }
 
-struct Color {
-    float color[4];
-};
+static void fillCommands(RenderCommandBuffer* commands) {
+    RenderCommandRectangle rect = {};
+    rect.width = 80.0f;
+    rect.height = 80.0f;
 
-static Color red() {
-    Color color = { 1.0f, 0.0f, 0.0f, 1.0f };
-    return color;
-}
-
-static Color green() {
-    Color color = { 0.0f, 1.0f, 0.0f, 1.0f };
-    return color;
-}
-
-static Color blue() {
-    Color color = { 0.0f, 0.0f, 1.0f, 1.0f };
-    return color;
-}
-
-#pragma pack(1)
-struct ColoredVertex {
-    float pos[3];
-    Color color;
-};
-
-ColoredVertex vertexGrid[6 * 12];
-
-void fillVertices() {
-    ColoredVertex* vertex = vertexGrid;
     float size = 80.0f;
-    Color colors[] = { red(), green(), blue() };
+    Color colors[] = { RED, GREEN, BLUE };
     for (int y = 0; y < 3; ++y) {
-        float yPos = 100.0f * y;
-        Color color = colors[y];
+        rect.y = 100.0f * y;
+        rect.color = colors[y];
         for (int x = 0; x < 4; ++x) {
-            float xPos = 100.0f * x;
-            // Six vertices to describe a quad
-            vertex->pos[0] = xPos;
-            vertex->pos[1] = yPos;
-            vertex->pos[2] = 0.0f;
-            vertex->color = color;
-            ++vertex;
-            vertex->pos[0] = xPos + size;
-            vertex->pos[1] = yPos;
-            vertex->pos[2] = 0.0f;
-            vertex->color = color;
-            ++vertex;
-            vertex->pos[0] = xPos;
-            vertex->pos[1] = yPos + size;
-            vertex->pos[2] = 0.0f;
-            vertex->color = color;
-            ++vertex;
-
-            vertex->pos[0] = xPos + size;
-            vertex->pos[1] = yPos;
-            vertex->pos[2] = 0.0f;
-            vertex->color = color;
-            ++vertex;
-            vertex->pos[0] = xPos + size;
-            vertex->pos[1] = yPos + size;
-            vertex->pos[2] = 0.0f;
-            vertex->color = color;
-            ++vertex;
-            vertex->pos[0] = xPos;
-            vertex->pos[1] = yPos + size;
-            vertex->pos[2] = 0.0f;
-            vertex->color = color;
-            ++vertex;
+            rect.x = 100.0f * x;
+            commands->push(&rect);
         }
     }
 }
@@ -384,7 +260,7 @@ static int mainFunction()
     wchar_t const* windowClassName = L"FP_WindowClass";
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(windowClass);
-    windowClass.style = 0;// CS_OWNDC;
+    windowClass.style = CS_OWNDC;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = windowClassName;
     windowClass.lpfnWndProc = &MainWndProc;
@@ -423,20 +299,13 @@ static int mainFunction()
     // Disable vsync
     wglSwapIntervalEXT(0);
 
-    g_renderer.setup(deviceContext);
+    int renderMemorySize = 1 * MB;
+    void* renderMemory = pageAllocator.allocate(renderMemorySize);
+    defer{ pageAllocator.free(renderMemory, renderMemorySize); };
 
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-        0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-        0.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-    };  
-
-    fillVertices();
-
-    // TODO: Abstract this away
-    glBindBuffer(GL_ARRAY_BUFFER, g_renderer.vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertexGrid), vertexGrid, GL_STATIC_DRAW);
+    g_renderer.setup(deviceContext, renderMemory, renderMemorySize);
     
+    // TODO: Move this into the renderer
     int vertexSize = sizeof(ColoredVertex);
     // The binding index connects the attribute location (here 0) with a specific buffer
     // They do not have to be the same
@@ -454,9 +323,6 @@ static int mainFunction()
 
     glEnableVertexAttribArray(positionIndex);
     glEnableVertexAttribArray(colorIndex);
-
-    int uniformColorIndex = glGetUniformLocation(g_renderer.shaderProgram, "uniformColor");
-    g_renderer.projectionLocation = glGetUniformLocation(g_renderer.shaderProgram, "projection");
 
     glUseProgram(g_renderer.shaderProgram);
 
@@ -493,15 +359,17 @@ static int mainFunction()
         {
             // OutputDebugStringW(L"Left button clicked\n");
         }
+
+        fillCommands(&g_renderer.commands);
         
         RECT rect;
         GetClientRect(window, &rect);
         int renderWidth = rect.right - rect.left;
         int renderHeight = rect.bottom - rect.top;
 
-        g_renderer.deviceContext = GetDC(window);
         render(renderWidth, renderHeight);
-        ReleaseDC(window, g_renderer.deviceContext);
+
+        g_renderer.endFrame();
     }
 
     return 0;

@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\fp_renderer.h" />
     <ClCompile Include="src\os_win32.cpp" />
   </ItemGroup>
   <ItemGroup>
