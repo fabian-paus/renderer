@@ -108,6 +108,7 @@ static void render(int width, int height) {
     if (!swapResult) {
         OutputDebugStringW(L"Failed to swap buffers\n");
     }
+    glFinish();
 }
 
 enum class MouseButton
@@ -179,12 +180,10 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
             // We have to render the image here to get smooth resizing behaviour
             int width = LOWORD(lParam);
             int height = LOWORD(lParam);
-            RECT rect;
-            GetClientRect(window, &rect);
-            int renderWidth = rect.right - rect.left;
-            int renderHeight = rect.bottom - rect.top;
 
-            render(renderWidth, renderHeight);
+            g_renderer.deviceContext = GetDC(window);
+            render(width, height);
+            ReleaseDC(window, g_renderer.deviceContext);
         }
         return 0;
 
@@ -385,7 +384,7 @@ static int mainFunction()
     wchar_t const* windowClassName = L"FP_WindowClass";
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(windowClass);
-    windowClass.style = CS_OWNDC;
+    windowClass.style = 0;// CS_OWNDC;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = windowClassName;
     windowClass.lpfnWndProc = &MainWndProc;
@@ -500,7 +499,9 @@ static int mainFunction()
         int renderWidth = rect.right - rect.left;
         int renderHeight = rect.bottom - rect.top;
 
+        g_renderer.deviceContext = GetDC(window);
         render(renderWidth, renderHeight);
+        ReleaseDC(window, g_renderer.deviceContext);
     }
 
     return 0;

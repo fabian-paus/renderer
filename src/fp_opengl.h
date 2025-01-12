@@ -328,7 +328,7 @@ static HGLRC gl_createContext(HDC deviceContext) {
         // uncomment for multisampled framebuffer, from WGL_ARB_multisample extension
         // https://www.khronos.org/registry/OpenGL/extensions/ARB/ARB_multisample.txt
         WGL_SAMPLE_BUFFERS_ARB, 1,
-        WGL_SAMPLES_ARB,        16, // 4x MSAA
+        WGL_SAMPLES_ARB,        4, // 4x MSAA
 
         0,
     };
