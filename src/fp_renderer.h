@@ -92,6 +92,8 @@ struct ColoredVertex {
 
 struct Renderer {
     RenderCommandBuffer commands;
+    // Used to to store temporary data during rendering
+    ArenaAllocator temporaryRenderBuffer;
 
     // TODO: Get rid of the windows specific code here
     HDC deviceContext;
@@ -106,7 +108,10 @@ struct Renderer {
     int projectionLocation;
 
     void setup(HDC dc, void* renderMemory, int renderMemorySize) {
-        commands.allocator = createArenaAllocator(renderMemory, renderMemorySize);
+        int commandSize = renderMemorySize / 2;
+        commands.allocator = createArenaAllocator(renderMemory, commandSize);
+        int tempSize = renderMemorySize - commandSize;
+        temporaryRenderBuffer = createArenaAllocator((u8*)renderMemory + commandSize, tempSize);
 
         deviceContext = dc;
 
@@ -135,7 +140,7 @@ struct Renderer {
         RenderCommand* command = commands.first();
         RenderCommand* onePastLast = commands.onePastLast();
 
-        ColoredVertex* rectVertices = commands.allocator.allocateArray<ColoredVertex>(commands.rectCount * 6ULL);
+        ColoredVertex* rectVertices = temporaryRenderBuffer.allocateArray<ColoredVertex>(commands.rectCount * 6ULL);
         ColoredVertex* rectVertex = rectVertices;
 
         while (command < onePastLast) {
@@ -196,11 +201,16 @@ struct Renderer {
 
             glDrawArrays(GL_TRIANGLES, 0, vertexCount);
         }
+
+        temporaryRenderBuffer.reset();
+    }
+
+    void beginFrame() {
+        commands.reset();
     }
 
     void endFrame() {
         glFinish();
-        commands.reset();
     }
 };
 

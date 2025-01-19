@@ -22,6 +22,9 @@
     <ClInclude Include="src\fp_renderer.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="src\fp_log.h">
+      <Filter>src</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="src">

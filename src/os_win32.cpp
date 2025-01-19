@@ -9,14 +9,26 @@
 #include "fp_win32.h"
 #include "fp_opengl.h"
 #include "fp_math.h"
+#include "fp_log.h"
 #include "fp_renderer.h"
 
 #include <Windows.h>
 #include <gl/GL.h>
 
 Renderer g_renderer;
+Log g_log;
 
 static void render(int width, int height) {
+    glViewport(0, 0, width, height);
+
+    float transformMatrix[16] = {
+        2.0f / width, 0.0f,  0.0f, -1.0f,
+        0.0f, 2.0f / height, 0.0f, -1.0f,
+        0.0f, 0.0f,                1.0f, 0.0f,
+        0.0f, 0.0f,                0.0f, 1.0f,
+    };
+    glUniformMatrix4fv(g_renderer.projectionLocation, 1, GL_TRUE, transformMatrix);
+
     glViewport(0, 0, width, height);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -27,22 +39,28 @@ static void render(int width, int height) {
     //float green = sin(2 * timeInSeconds) / 2.0f + 0.5f;
     //glUniform4f(uniformColorIndex, 0.0, green, 0.0, 1.0);
 
-    float transformMatrix[16] = {
-        2.0f / width, 0.0f,  0.0f, -1.0f,
-        0.0f, 2.0f / height, 0.0f, -1.0f,
-        0.0f, 0.0f,                1.0f, 0.0f,
-        0.0f, 0.0f,                0.0f, 1.0f,
-    };
-    glUniformMatrix4fv(g_renderer.projectionLocation, 1, GL_TRUE, transformMatrix);
-
     g_renderer.render();
-    //glDrawArrays(GL_TRIANGLES, 0, 6 * 12);
 
     BOOL swapResult = SwapBuffers(g_renderer.deviceContext);
     if (!swapResult) {
         OutputDebugStringW(L"Failed to swap buffers\n");
     }
 }
+
+static void flushLog() {
+    LogEntry* entry = g_log.beginFlush();
+    while (entry != nullptr) {
+
+        entry->message[entry->length] = '\n';
+        entry->message[entry->length + 1] = '\0';
+
+        OutputDebugStringA(entry->message);
+
+        entry = next(entry);
+    }
+    g_log.endFlush();
+}
+
 
 enum class MouseButton
 {
@@ -67,6 +85,11 @@ struct UserInput
     bool isUp(MouseButton button)
     {
         return (mouseButtonState & ((u16)1 << (u16)button)) == 0;
+    }
+
+    bool wasClicked(MouseButton button)
+    {
+        return mouseButtonClicked & ((u16)1 << (u16)button);
     }
 };
 
@@ -228,6 +251,11 @@ static void fillCommands(RenderCommandBuffer* commands) {
 
 static int mainFunction()
 {
+    char buffer[512] = {};
+
+    // TODO: Integrate this into the logging system
+    print(buffer, 640, "x", 480, " pixels");
+
     gl_initialize();
 
     Allocator pageAllocator = createPageAllocator();
@@ -304,6 +332,14 @@ static int mainFunction()
     defer{ pageAllocator.free(renderMemory, renderMemorySize); };
 
     g_renderer.setup(deviceContext, renderMemory, renderMemorySize);
+
+    // TODO: Do only one allocation and partition the memory
+    int logMemorySize = 4 * KB;
+    void* logMemory = pageAllocator.allocate(logMemorySize);
+    defer{ pageAllocator.free(logMemory, logMemorySize); };
+
+    g_log = createLog(logMemory, logMemorySize);
+
     
     // TODO: Move this into the renderer
     int vertexSize = sizeof(ColoredVertex);
@@ -355,10 +391,14 @@ static int mainFunction()
             break;
         }
 
-        if (g_userInput.isDown(MouseButton::Left))
+        if (g_userInput.wasClicked(MouseButton::Left))
         {
-            // OutputDebugStringW(L"Left button clicked\n");
+            char message[] = "Left button clicked";
+            g_log.add(message, sizeof(message));
+            //OutputDebugStringW(L"Left button clicked\n");
         }
+
+        g_renderer.beginFrame();
 
         fillCommands(&g_renderer.commands);
         
@@ -370,6 +410,8 @@ static int mainFunction()
         render(renderWidth, renderHeight);
 
         g_renderer.endFrame();
+
+        flushLog();
     }
 
     return 0;
